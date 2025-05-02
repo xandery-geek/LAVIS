@@ -1,0 +1,1 @@
+python -m custom.test.test_qm_retriever
