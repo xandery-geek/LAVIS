@@ -11,11 +11,14 @@ datasets:
     build_info:
       # Be careful not to append minus sign (-) before split to avoid itemizing
       annotations:
-        train:
-          storage: coco/annotations/coco_karpathy_train.json
+        # train:
+        #   storage: /home/yuanxu/Dataset/qm-dataset/train.json
         val:
-          storage: coco/annotations/coco_karpathy_val.json
+          storage: /home/yuanxu/Dataset/qm-dataset/val.json
         test:
-          storage: coco/annotations/coco_karpathy_test.json
+          storage: /home/yuanxu/Dataset/qm-dataset/test.json
       images:
-          storage: coco/images/
+          storage:
+            inat21: /home/yuanxu/Dataset/iNaturalist/vqa
+            gldv2: /home/yuanxu/Dataset/GLDv2/vqa
+            knowledge_base: /home/yuanxu/Dataset/encyclopedic-vqa/kb_images_640

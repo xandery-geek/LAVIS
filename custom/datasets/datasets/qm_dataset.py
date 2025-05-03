@@ -1,8 +1,10 @@
 import os
-from collections import OrderedDict
+import json
+import random
 
-from lavis.datasets.datasets.base_dataset import BaseDataset
+from collections import OrderedDict
 from PIL import Image
+from lavis.datasets.datasets.base_dataset import BaseDataset
 
 
 class __DisplMixin:
@@ -20,69 +22,67 @@ class __DisplMixin:
 
 
 class QMRetrievalDataset(BaseDataset, __DisplMixin):
+    _INAT21_MAPPING_FILE = "inaturalist_id2name.json"
+
     def __init__(self, vis_processor, text_processor, vis_root, ann_paths):
         """
         vis_root (string): Root directory of images (e.g. coco/images/)
         ann_root (string): directory to store the annotation file
         """
         super().__init__(vis_processor, text_processor, vis_root, ann_paths)
+        
+        self.inat21_dir = self.vis_root.inat21
+        self.gldv2_dir = self.vis_root.gldv2
+        self.kb_image_dir = self.vis_root.knowledge_base
 
-        self.img_ids = {}
-        n = 0
-        for ann in self.annotation:
-            img_id = ann["image_id"]
-            if img_id not in self.img_ids.keys():
-                self.img_ids[img_id] = n
-                n += 1
+        self.inat21_map = json.load(open(os.path.join(self.vis_root.inat21, self._INAT21_MAPPING_FILE)))
+    
+    def _get_image_path(self, dataset_name, image_id):
+        if dataset_name == "inaturalist":
+            image_path = os.path.join(self.inat21_dir, self.inat21_map[image_id])
+        elif dataset_name == "landmarks":
+            image_path = os.path.join(
+                self.gldv2_dir, image_id[0], image_id[1], image_id[2], image_id + ".jpg"
+            )
+        else:
+            raise ValueError("Invalid dataset name")
+
+        return image_path
 
     def __getitem__(self, index):
-
         ann = self.annotation[index]
 
-        image_path = os.path.join(self.vis_root, ann["image"])
-        image = Image.open(image_path).convert("RGB")
+        # Get the query image and question
+        question = ann["question"]
+        query_image_dataset = ann["image_dataset"]
+        query_image_ids = ann["image_ids"]
+        query_image_path = self._get_image_path(query_image_dataset, query_image_ids)
+        
+        query_image = Image.open(query_image_path).convert("RGB")
+        query_image = self.vis_processor(query_image)
+        question = self.text_processor(question)
 
-        image = self.vis_processor(image)
-        caption = self.text_processor(ann["caption"])
+        # Get the evidence image and evidence section
+        evidence_section = ann["evidence_section"]
+        evidence_image = ann["evidence_image"]
+
+        random_index = random.randint(0, len(evidence_section) - 1)
+        evidence_section = evidence_section[random_index]
+        evidence_image = evidence_image[random_index]
+
+        if len(evidence_image) > 0:
+            evidence_image_path = os.path.join(self.kb_image_dir, evidence_image[0])
+            evidence_image = Image.open(evidence_image_path).convert("RGB")
+        else:
+            # create a blank image
+            evidence_image = Image.new("RGB", (224, 224), (0, 0, 0))
+
+        evidence_image = self.vis_processor(evidence_image)
+        evidence_section = self.text_processor(evidence_section)
 
         return {
-            "image": image,
-            "text_input": caption,
-            "image_id": self.img_ids[ann["image_id"]],
-            "instance_id": ann["instance_id"],
+            "question": question,
+            "query_image": query_image,
+            "evidence": evidence_section,
+            "evidence_image": evidence_image,
         }
-
-
-class QMRetrievalEvalDataset(BaseDataset, __DisplMixin):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths):
-        """
-        vis_root (string): Root directory of images (e.g. coco/images/)
-        ann_root (string): directory to store the annotation file
-        split (string): val or test
-        """
-
-        super().__init__(vis_processor, text_processor, vis_root, ann_paths)
-
-        self.text = []
-        self.image = []
-        self.txt2img = {}
-        self.img2txt = {}
-
-        txt_id = 0
-        for img_id, ann in enumerate(self.annotation):
-            self.image.append(ann["image"])
-            self.img2txt[img_id] = []
-            for i, caption in enumerate(ann["caption"]):
-                self.text.append(self.text_processor(caption))
-                self.img2txt[img_id].append(txt_id)
-                self.txt2img[txt_id] = img_id
-                txt_id += 1
-
-    def __getitem__(self, index):
-
-        image_path = os.path.join(self.vis_root, self.annotation[index]["image"])
-        image = Image.open(image_path).convert("RGB")
-
-        image = self.vis_processor(image)
-
-        return {"image": image, "index": index}
