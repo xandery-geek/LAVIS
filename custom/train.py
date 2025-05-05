@@ -19,10 +19,13 @@ from lavis.common.logger import setup_logger
 from lavis.common.registry import registry
 from lavis.common.utils import now
 
-from lavis.runners import *
-
+from lavis.common.optims import (
+    LinearWarmupCosineLRScheduler,
+    LinearWarmupStepLRScheduler,
+)
 from custom.tasks.qm_retrieval import QMRetrievalTask
 from custom.datasets.builders.qm_builder import QMRetrievalBuilder
+from lavis.runners import *
 from custom.models import *
 from custom.processors import *
 

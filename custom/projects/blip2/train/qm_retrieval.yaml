@@ -9,16 +9,17 @@ model:
   load_pretrained: True
   load_finetuned: False 
   freeze_vit: True
+  max_txt_len: 512
 
 datasets:
   qm_retrieval: # name of the dataset builder
     vis_processor:
         train:
           name: "blip2_image_train"
-          image_size: 364
+          image_size: 224
         eval:
           name: "blip_image_eval"
-          image_size: 364
+          image_size: 224
     text_processor:
         train:
           name: "blip_caption"
@@ -38,8 +39,8 @@ run:
   warmup_steps: 1000
   weight_decay: 0.05
   max_epoch: 5
-  batch_size_train: 16
-  batch_size_eval: 16
+  batch_size_train: 32
+  batch_size_eval: 32
   lr_layer_decay: 0.95 # layer-wise learning rate decay for the ViT 
   num_workers: 4
   accum_grad_iters: 1
