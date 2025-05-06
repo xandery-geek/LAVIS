@@ -10,6 +10,8 @@ model:
   load_finetuned: False 
   freeze_vit: True
   max_txt_len: 512
+  rephrase_query: False
+  loss_kl_weight: 0.1
 
 datasets:
   qm_retrieval: # name of the dataset builder
@@ -25,9 +27,6 @@ datasets:
           name: "blip_caption"
         eval:
           name: "blip_caption"
-    # build_info:
-    #     images:
-    #         storage: '/export/share/datasets/vision/coco/images/'
 
 run:
   task: qm_retrieval
@@ -47,15 +46,15 @@ run:
 
   seed: 42
   output_dir: "output/BLIP2/QM_Retrieval"
+  log_freq: 100
 
   amp: True
   resume_ckpt_path: null
 
   evaluate: False
   train_splits: ["train"]
-  valid_splits: ["test"]
-  # test_splits: ["test"]
-  k_test: 128
+  valid_splits: ["val"]
+  test_splits: ["test"]
 
   device: "cuda"
   world_size: 1

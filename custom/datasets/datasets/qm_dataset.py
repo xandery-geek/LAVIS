@@ -35,7 +35,7 @@ class QMRetrievalDataset(BaseDataset, __DisplMixin):
         self.gldv2_dir = self.vis_root.gldv2
         self.kb_image_dir = self.vis_root.knowledge_base
 
-        self.inat21_map = json.load(open(os.path.join(self.vis_root.inat21, self._INAT21_MAPPING_FILE)))
+        self.inat21_map = json.load(open(os.path.join(self.inat21_dir, self._INAT21_MAPPING_FILE)))
     
     def _get_image_path(self, dataset_name, image_id):
         if dataset_name == "inaturalist":
