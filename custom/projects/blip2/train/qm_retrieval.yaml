@@ -10,8 +10,8 @@ model:
   load_finetuned: False 
   freeze_vit: True
   max_txt_len: 512
-  rephrase_query: False
-  loss_kl_weight: 0.1
+  rephrase_query: True
+  loss_kl_weight: 10
 
 datasets:
   qm_retrieval: # name of the dataset builder
@@ -38,8 +38,8 @@ run:
   warmup_steps: 1000
   weight_decay: 0.05
   max_epoch: 5
-  batch_size_train: 32
-  batch_size_eval: 32
+  batch_size_train: 24
+  batch_size_eval: 24
   lr_layer_decay: 0.95 # layer-wise learning rate decay for the ViT 
   num_workers: 4
   accum_grad_iters: 1

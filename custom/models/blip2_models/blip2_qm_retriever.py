@@ -44,7 +44,7 @@ class Blip2QMRetriever(Blip2Base):
     PRETRAINED_MODEL_CONFIG_DICT = {
         "pretrain": "configs/models/blip2/blip2_pretrain.yaml",
         "pretrain_vitL": "configs/models/blip2/blip2_pretrain_vitL.yaml",
-        "coco": "configs/models/blip2/blip2_coco.yaml",
+        "qm_retriever": "configs/models/blip2/blip2_qm_retriever.yaml",
     }
 
     def __init__(
@@ -125,8 +125,6 @@ class Blip2QMRetriever(Blip2Base):
         )
 
         multimodal_feats = output.last_hidden_state[:, : query_tokens.size(1), :]
-        multimodal_feats = F.normalize(multimodal_feats, dim=-1) # [batch_size*2, num_query_tokens, embed_dim]
-
         return multimodal_feats
     
     def forward(self, samples):
@@ -143,18 +141,18 @@ class Blip2QMRetriever(Blip2Base):
             rephrase_question = samples["rephrase_question"]
             rephrase_image = query_image.clone()
 
-            query_feats = self.forward_for_feature(question, query_image, use_question_encoder=True)
-            evidence_feats = self.forward_for_feature(evidence, evidence_image, use_question_encoder=False)
-            rephrase_query_feats = self.forward_for_feature(rephrase_question, rephrase_image, use_question_encoder=False)
+            query_feats = self.forward_for_feature(query_image, question, use_question_encoder=True)
+            evidence_feats = self.forward_for_feature(evidence_image, evidence, use_question_encoder=False)
+            rephrase_query_feats = self.forward_for_feature(rephrase_image, rephrase_question, use_question_encoder=False)
             
             loss_kl = self.loss_kl_weight * F.kl_div(
-                F.log_softmax(query_feats, dim=-1), 
-                F.softmax(rephrase_query_feats, dim=-1), 
+                F.log_softmax(F.normalize(query_feats, dim=-1), dim=-1),
+                F.softmax(F.normalize(rephrase_query_feats, dim=-1), dim=-1),
                 reduction='batchmean'
                 )
 
-            query_feats = query_feats.mean(dim=1) # [batch_size, embed_dim]
-            evidence_feats = evidence_feats.mean(dim=1) # [batch_size, embed_dim]
+            query_feats = F.normalize(query_feats.mean(dim=1), dim=-1)
+            evidence_feats = F.normalize(evidence_feats.mean(dim=1), dim=-1)
         else:
             loss_kl = torch.tensor(0.0).to(device)
 
@@ -162,7 +160,7 @@ class Blip2QMRetriever(Blip2Base):
             text = question + evidence
 
             multimodal_feats = self.forward_for_feature(image, text, use_question_encoder=False)
-            pooling_feats = multimodal_feats.mean(dim=1) # [batch_size*2, embed_dim]
+            pooling_feats = F.normalize(multimodal_feats.mean(dim=1), dim=-1) # [batch_size*2, embed_dim]
 
             query_feats = pooling_feats[:bs] # [batch_size, embed_dim]
             evidence_feats = pooling_feats[bs:] # [batch_size, embed_dim]
@@ -245,7 +243,6 @@ class Blip2QMRetriever(Blip2Base):
         )
 
         multimodal_embeds = output.last_hidden_state[:, : query_tokens.size(1), :]
-        multimodal_embeds = F.normalize(multimodal_embeds.mean(dim=1), dim=-1)
 
         return BlipOutputFeatures(
             multimodal_embeds=multimodal_embeds,
@@ -304,10 +301,12 @@ def compute_accuracy(model, data_loader, **kwargs):
 
         query_sample = {"image": query_image, "text_input": question}
         query_feat = model.extract_features(query_sample, mode="multimodal").multimodal_embeds
+        query_feat = F.normalize(query_feat.mean(dim=1), dim=-1)
         query_feats.append(query_feat)
 
         evidence_sample = {"image": evidence_image, "text_input": evidence}
         evidence_feat = model.extract_features(evidence_sample, mode="multimodal").multimodal_embeds
+        evidence_feat = F.normalize(evidence_feat.mean(dim=1), dim=-1)
         evidence_feats.append(evidence_feat)
     
     query_feats = torch.cat(query_feats, dim=0)

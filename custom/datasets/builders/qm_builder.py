@@ -1,15 +1,14 @@
 import os
-import warnings
 
 import lavis.common.utils as utils
 from lavis.common.registry import registry
 from lavis.datasets.builders.base_dataset_builder import BaseDatasetBuilder
-from custom.datasets.datasets.qm_dataset import QMRetrievalDataset
+from custom.datasets.datasets.qm_dataset import QMRetrievalDataset, QMRetrievalTrainDataset
 
 
 @registry.register_builder("qm_retrieval")
 class QMRetrievalBuilder(BaseDatasetBuilder):
-    train_dataset_cls = QMRetrievalDataset
+    train_dataset_cls = QMRetrievalTrainDataset
     eval_dataset_cls = QMRetrievalDataset
 
     DATASET_CONFIG_DICT = {"default": "configs/datasets/qm_retrieval.yaml"}

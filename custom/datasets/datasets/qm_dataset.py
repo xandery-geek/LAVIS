@@ -20,7 +20,6 @@ class __DisplMixin:
             }
         )
 
-
 class QMRetrievalDataset(BaseDataset, __DisplMixin):
     _INAT21_MAPPING_FILE = "inaturalist_id2name.json"
 
@@ -86,3 +85,17 @@ class QMRetrievalDataset(BaseDataset, __DisplMixin):
             "evidence": evidence_section,
             "evidence_image": evidence_image,
         }
+
+
+class QMRetrievalTrainDataset(QMRetrievalDataset):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths):
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths)
+
+    def __getitem__(self, index):
+        ann = self.annotation[index]
+        rephrase_question = ann["rephrase_question"]
+
+        sample = super().__getitem__(index)
+        sample["rephrase_question"] = rephrase_question
+
+        return sample

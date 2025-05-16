@@ -12,6 +12,9 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 
+from transformers import logging
+logging.set_verbosity_error()
+
 import lavis.tasks as tasks
 from lavis.common.config import Config
 from lavis.common.dist_utils import get_rank, init_distributed_mode
