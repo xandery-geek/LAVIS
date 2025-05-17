@@ -192,27 +192,12 @@ class Blip2QMRetriever(Blip2Base):
         )
 
     @torch.no_grad()
-    def extract_features(self, samples, mode="multimodal"):
-        """
-        Extract features for multimodal or unimodal samples.
-        Args:
-            samples (dict): A dictionary of samples, containing the following keys:
-                - image (torch.Tensor): A tensor of shape (B, C, H, W) containing the image.
-                    Raw images should be preprocessed before being passed to feature extractor.
-                - text_input (list): A list of strings containing the text, length B.
-            mode (str): The mode of feature extraction. Can be either "multimodal", "text" or "image".
-                If "multimodal", return image features and multimodal features;
-                if "text", return text features;
-                if "image", return image features.
-                Default: "multimodal".
-        Returns:
-            BlipOutputFeatures: A BlipOutputFeatures object containing the features.
-                See lavis/models/blip_models/blip_outputs.py for more details.
-        """
-        assert mode == "multimodal"
+    def extract_features(self, samples, text_type="question"):
+        assert text_type in ["question", "evidence"], f"Invalid text type: {text_type}"
+        use_question_encoder = (text_type == "question")
 
         image = samples.get("image")
-        caption = samples.get("text_input")
+        text_input = samples.get("text_input")
         
         # return multimodel query features
         with self.maybe_autocast():
@@ -228,7 +213,7 @@ class Blip2QMRetriever(Blip2Base):
             self.device
         )
 
-        text = self.tokenizer(caption, return_tensors="pt", padding=True).to(
+        text = self.tokenizer(text_input, return_tensors="pt", padding=True).to(
             self.device
         )
         attention_mask = torch.cat([query_atts, text.attention_mask], dim=1)
@@ -240,13 +225,11 @@ class Blip2QMRetriever(Blip2Base):
             encoder_hidden_states=image_embeds_frozen,
             encoder_attention_mask=image_atts,
             return_dict=True,
+            use_question_encoder=use_question_encoder,
         )
 
         multimodal_embeds = output.last_hidden_state[:, : query_tokens.size(1), :]
-
-        return BlipOutputFeatures(
-            multimodal_embeds=multimodal_embeds,
-        )
+        return multimodal_embeds
 
     @classmethod
     def from_config(cls, cfg):
@@ -300,12 +283,12 @@ def compute_accuracy(model, data_loader, **kwargs):
         evidence_image = samples["evidence_image"]
 
         query_sample = {"image": query_image, "text_input": question}
-        query_feat = model.extract_features(query_sample, mode="multimodal").multimodal_embeds
+        query_feat = model.extract_features(query_sample, text_type="question")
         query_feat = F.normalize(query_feat.mean(dim=1), dim=-1)
         query_feats.append(query_feat)
 
         evidence_sample = {"image": evidence_image, "text_input": evidence}
-        evidence_feat = model.extract_features(evidence_sample, mode="multimodal").multimodal_embeds
+        evidence_feat = model.extract_features(evidence_sample, text_type="evidence")
         evidence_feat = F.normalize(evidence_feat.mean(dim=1), dim=-1)
         evidence_feats.append(evidence_feat)
     
