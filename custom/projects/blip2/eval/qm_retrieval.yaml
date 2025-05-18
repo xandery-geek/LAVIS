@@ -7,11 +7,12 @@ model:
   arch: blip2_qm_retriever
   model_type: pretrain_vitL
   load_pretrained: True
-  load_finetuned: False 
+  load_finetuned: True
+  finetuned: ""
   freeze_vit: True
   max_txt_len: 512
-  rephrase_query: False
-  loss_kl_weight: 0.1
+  rephrase_query: True
+  loss_kl_weight: 2
 
 datasets:
   qm_retrieval: # name of the dataset builder

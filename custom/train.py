@@ -97,7 +97,11 @@ def main():
     runner = get_runner_class(cfg)(
         cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets
     )
-    runner.train()
+
+    if cfg.run_cfg.evaluate:
+        runner.evaluate(skip_reload=True)
+    else:
+        runner.train()
 
 
 if __name__ == "__main__":

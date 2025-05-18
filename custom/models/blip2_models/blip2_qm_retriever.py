@@ -17,6 +17,7 @@ from torch.nn import functional as F
 from transformers.modeling_outputs import ModelOutput
 
 from lavis.common.registry import registry
+import lavis.common.dist_utils as dist_utils
 from lavis.models.base_model import concat_all_gather
 from lavis.models.blip_models.blip_outputs import BlipOutputFeatures
 from custom.models.blip2_models.blip2 import Blip2Base, disabled_train
@@ -295,19 +296,18 @@ def compute_accuracy(model, data_loader, **kwargs):
     query_feats = torch.cat(query_feats, dim=0)
     evidence_feats = torch.cat(evidence_feats, dim=0)
 
-    # gather all query and evidence features
-    query_feats_all = concat_all_gather(query_feats)
-    evidence_feats_all = concat_all_gather(evidence_feats)
-
-    sim_q2e = query_feats_all @ evidence_feats_all.t()
+    sim_q2e = query_feats @ evidence_feats.t()
     max_sim_idx = sim_q2e.argmax(dim=1)
-    targets = torch.arange(query_feats_all.size(0), dtype=torch.long).to(query_feats.device)
+    targets = torch.arange(query_feats.size(0), dtype=torch.long).to(query_feats.device)
+    acc = (max_sim_idx == targets).float().mean()
 
-    acc = (max_sim_idx == targets).float().mean().item()
+    if dist_utils.is_dist_avail_and_initialized():
+        dist.barrier()
+        torch.distributed.all_reduce(
+            acc, op=torch.distributed.ReduceOp.AVG
+        )
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logging.info("Evaluation time {}".format(total_time_str))
-    logging.info("Accuracy: {:.4f}".format(acc))
-
-    return acc
+    return acc.item()
