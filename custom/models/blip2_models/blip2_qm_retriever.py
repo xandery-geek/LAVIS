@@ -203,7 +203,7 @@ class Blip2QMRetriever(Blip2Base):
         # return multimodel query features
         with self.maybe_autocast():
             image_embeds_frozen = self.ln_vision(self.visual_encoder(image))
-        image_embeds_frozen = image_embeds_frozen.float()
+        image_embeds_frozen = image_embeds_frozen.to(self.query_tokens.dtype)
         image_atts = torch.ones(
             image_embeds_frozen.size()[:-1], dtype=torch.long
         ).to(self.device)
@@ -214,9 +214,14 @@ class Blip2QMRetriever(Blip2Base):
             self.device
         )
 
-        text = self.tokenizer(text_input, return_tensors="pt", padding=True).to(
-            self.device
-        )
+        text = self.tokenizer(
+            text_input, 
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt"
+        ).to(self.device)
+        
         attention_mask = torch.cat([query_atts, text.attention_mask], dim=1)
 
         output = self.Qformer.bert(
