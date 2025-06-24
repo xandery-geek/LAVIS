@@ -984,6 +984,10 @@ class BertLMHeadModel(BertPreTrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.cls.predictions.decoder = new_embeddings
 
+    def resize_decoder_bias(self, new_vocab_size):
+        self.cls.predictions.bias = nn.Parameter(torch.zeros(new_vocab_size))
+        self.cls.predictions.decoder.bias = self.cls.predictions.bias
+
     def forward(
         self,
         input_ids=None,

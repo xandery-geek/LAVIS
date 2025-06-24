@@ -19,7 +19,6 @@ from transformers.modeling_outputs import ModelOutput
 from lavis.common.registry import registry
 import lavis.common.dist_utils as dist_utils
 from lavis.models.base_model import concat_all_gather
-from lavis.models.blip_models.blip_outputs import BlipOutputFeatures
 from custom.models.blip2_models.blip2 import Blip2Base, disabled_train
 
 
@@ -84,6 +83,9 @@ class Blip2QMRetriever(Blip2Base):
             question_encoder=rephrase_query,
         )
         self.Qformer.resize_token_embeddings(len(self.tokenizer))
+
+        # BUG: The decoder bias is not resized when transformers > 4.49.0, so we need to resize it manually
+        # self.Qformer.resize_decoder_bias(len(self.tokenizer))
         
         state_dict = self.Qformer.state_dict()
         for name, param in self.Qformer.named_parameters():
@@ -95,6 +97,14 @@ class Blip2QMRetriever(Blip2Base):
         self.max_txt_len = max_txt_len
         self.rephrase_query = rephrase_query
         self.loss_kl_weight = loss_kl_weight
+
+    def _print_trainable_parameters(self):
+        trainable_params = 0
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                trainable_params += param.numel()
+                logging.info(f"Trainable: {name}, size: {param.size()}")
+        logging.info(f"Total trainable parameters: {trainable_params / 1e6:.2f}M")
 
     def forward_for_feature(self, image, text, use_question_encoder=False):
         image_embeds = self.ln_vision(self.visual_encoder(image)) # [batch_size*2, num_embed, embed_dim]
@@ -267,52 +277,51 @@ class Blip2QMRetriever(Blip2Base):
         )
         model.load_checkpoint_from_config(cfg)
 
+        if not cfg.get("load_finetuned", False):
+            model._print_trainable_parameters()
+
         return model
 
     def compute_accuracy(self, data_loader, task_cfg):
         """
         Compute accuracy for the model on the given data loader.
         """
+        logging.info("Computing features for evaluation...")
+        start_time = time.time()
 
-        return compute_accuracy(model=self, data_loader=data_loader)
+        query_feats, evidence_feats = [], []
+        for samples in data_loader:
+            question = samples["question"]
+            query_image = samples["query_image"]
+            evidence = samples["evidence"]
+            evidence_image = samples["evidence_image"]
 
+            query_sample = {"image": query_image, "text_input": question}
+            query_feat = self.extract_features(query_sample, text_type="question")
+            query_feat = F.normalize(query_feat.mean(dim=1), dim=-1)
+            query_feats.append(query_feat)
 
-def compute_accuracy(model, data_loader, **kwargs):
-    logging.info("Computing features for evaluation...")
-    start_time = time.time()
+            evidence_sample = {"image": evidence_image, "text_input": evidence}
+            evidence_feat = self.extract_features(evidence_sample, text_type="evidence")
+            evidence_feat = F.normalize(evidence_feat.mean(dim=1), dim=-1)
+            evidence_feats.append(evidence_feat)
+        
+        query_feats = torch.cat(query_feats, dim=0)
+        evidence_feats = torch.cat(evidence_feats, dim=0)
 
-    query_feats, evidence_feats = [], []
-    for samples in data_loader:
-        question = samples["question"]
-        query_image = samples["query_image"]
-        evidence = samples["evidence"]
-        evidence_image = samples["evidence_image"]
+        sim_q2e = query_feats @ evidence_feats.t()
+        max_sim_idx = sim_q2e.argmax(dim=1)
+        targets = torch.arange(query_feats.size(0), dtype=torch.long).to(query_feats.device)
+        acc = (max_sim_idx == targets).float().mean()
 
-        query_sample = {"image": query_image, "text_input": question}
-        query_feat = model.extract_features(query_sample, text_type="question")
-        query_feat = F.normalize(query_feat.mean(dim=1), dim=-1)
-        query_feats.append(query_feat)
+        if dist_utils.is_dist_avail_and_initialized():
+            dist.barrier()
+            torch.distributed.all_reduce(
+                acc, op=torch.distributed.ReduceOp.AVG
+            )
 
-        evidence_sample = {"image": evidence_image, "text_input": evidence}
-        evidence_feat = model.extract_features(evidence_sample, text_type="evidence")
-        evidence_feat = F.normalize(evidence_feat.mean(dim=1), dim=-1)
-        evidence_feats.append(evidence_feat)
-    
-    query_feats = torch.cat(query_feats, dim=0)
-    evidence_feats = torch.cat(evidence_feats, dim=0)
+        total_time = time.time() - start_time
+        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+        logging.info("Evaluation time {}".format(total_time_str))
 
-    sim_q2e = query_feats @ evidence_feats.t()
-    max_sim_idx = sim_q2e.argmax(dim=1)
-    targets = torch.arange(query_feats.size(0), dtype=torch.long).to(query_feats.device)
-    acc = (max_sim_idx == targets).float().mean()
-
-    if dist_utils.is_dist_avail_and_initialized():
-        dist.barrier()
-        torch.distributed.all_reduce(
-            acc, op=torch.distributed.ReduceOp.AVG
-        )
-
-    total_time = time.time() - start_time
-    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    logging.info("Evaluation time {}".format(total_time_str))
-    return acc.item()
+        return acc.item()
